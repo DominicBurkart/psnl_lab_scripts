@@ -2,7 +2,7 @@
 PCA Validation
 
 usage
-    - to split the mturk data into the 80 / 20:
+    - to split the mturk data into two sets (test and training):
     python3 /path/to/this/file cleave /path/to/mturk/folder
     - NOTE: files used to validate the PCA will be output to the current directory.
 
@@ -14,7 +14,7 @@ usage
 
 Outline:    
 
-1.) cleave the data 80 / 20, save the cleaves
+1.) cleave the data according to the training_ratio, save the cleaves
 
 2.) output the mean values for the 80 % to be PCA'd in SPSS
 
@@ -79,7 +79,8 @@ def cleave(directory):
         '''
 
         def evaluate(c, p):
-            '''evaluation: returns average and min # participants for each set.'''
+            '''evaluation: returns average and min # participants for each set.
+            '''
             x0 = []
             x1 = []
             i = 0
@@ -100,12 +101,36 @@ def cleave(directory):
 
         questions = [s for s in all_series if s.dtype == 'float64']
 
-        two_best = {}  # overall max, max training set, max test set
+        two_best = {'stats': [None, None], 'groups': [None, None]}  # two choices: overall max and max smallest set.
 
         for pp in itertools.permutations(sessions):
-            for cp in itertools.permutations(questions):  # yikes. nesting factorials, dominic?
+            for cp in itertools.permutations(questions):
                 v = evaluate([cp[:int(cleave * len(cp))], cp[int(cleave * len(cp)):]], pp[:int(cleave * len(pp))])
-                if v[0]
+                try:
+                    if sum(sum(l) for l in v) > sum(sum(l) for l in two_best['stats'][0]):
+                        two_best['stats'][0] = v
+                        two_best['groups'][0] = [cp[:int(cleave * len(cp))], cp[int(cleave * len(cp)):]], [
+                            pp[:int(cleave * len(pp))],
+                            pp[int(cleave * len(pp)):]]
+                        print("updated best choices. Stats (average and min group #s): " + str(two_best['stats']))
+                except TypeError:
+                    two_best['stats'][0] = v
+                    two_best['groups'][0] = [cp[:int(cleave * len(cp))], cp[int(cleave * len(cp)):]], [
+                        pp[:int(cleave * len(pp))],
+                        pp[int(cleave * len(pp)):]]
+                try:
+                    if min(min(l) for l in v) > min(min(l) for l in two_best['stats'][1]):
+                        two_best['stats'][1] = v
+                        two_best['groups'][1] = [cp[:int(cleave * len(cp))], cp[int(cleave * len(cp)):]], [
+                            pp[:int(cleave * len(pp))],
+                            pp[int(cleave * len(pp)):]]
+                        print("updated best choices. Stats (average and min group #s): " + str(two_best['stats']))
+                except TypeError:
+                    two_best['stats'][1] = v
+                    two_best['groups'][1] = [cp[:int(cleave * len(cp))], cp[int(cleave * len(cp)):]], [
+                        pp[:int(cleave * len(pp))],
+                        pp[int(cleave * len(pp)):]]
+        return two_best
 
     # code for pulling the questions from the qualtrics
     ob = "Sharing dims - MTurk - objective  (divided by 25)_August 1, 2017_13.47.csv"
@@ -114,7 +139,6 @@ def cleave(directory):
 
     test_set = []
     training_set = []
-    to_cleave = []
     means = {}
     devs = {}
     for fname in os.listdir(directory):
@@ -123,7 +147,9 @@ def cleave(directory):
             all_series, all_sessions = study_import(fname)
             assert len(all_series) == len(all_sessions)
 
-            sessions_set, series_set = split_by_participants_and_case(all_sessions, all_series)
+            two_best = split_by_participants_and_case(all_sessions, all_series)
+            pd.DataFrame(two_best).to_csv("two_best.csv")
+            sessions_set, series_set = two_best['groups'][0]
 
             for i in range(len(all_series)):
                 series = all_series[i]
@@ -151,119 +177,118 @@ def cleave(directory):
     print("min # responses in test set: " + str(min([len(l) for l in test_set])))
     print("min # responses in training set: " + str(min([len(l) for l in training_set])))
 
+    o([training_set, test_set], "sets.pickle")  # save test and training sets for later.
 
-##    o([training_set, test_set], "sets.pickle") # save test and training sets for later.
-##
-##    keys = list(means.keys())
-##
-##    Qs = list(set([x.split("__")[1] for x in keys])) # questions (cases)
-##    Ds = list(set([x.split("__")[0] for x in keys])) # dimensions (variables)
-##
-##    temp = []
-##    tempq = []
-##
-##    for q in Qs:
-##       row = {}
-##       for d in Ds:
-##           for k in keys:
-##               if k.startswith(d) and k.endswith(q):
-##                   row[d] = means[k]
-##                   break
-##       temp.append(row)
-##       tempq.append(q)
-##
-##    all_keys = set(temp[0].keys())
-##    i = 0
-##    bads = []
-##    clean = []
-##    for row in temp:
-##       if set(row.keys()) != all_keys:
-##           bads.append(i)
-##           del tempq[i]
-##       else:
-##           clean.append(row)
-##       i = i +1 
-##
-##    assert len(tempq) == len(clean)
-##
-##    df = pd.DataFrame(columns=clean[0].keys())
-##
-##    for i in range(len(clean)):
-##       try:
-##           df.loc[questions[tempq[i]][0].split(r" - ")[1]] = clean[i]
-##       except IndexError:
-##           df.loc[questions[tempq[i]][0]] = clean[i]
-##       except KeyError:
-##           print(tempq[i] + " excluded from the analysis as it is not rated along all dimensions.")
-##           continue
-##
-##    df.to_csv("scored_questions_for_r.csv")
+    keys = list(means.keys())
+
+    Qs = list(set([x.split("__")[1] for x in keys]))  # questions (cases)
+    Ds = list(set([x.split("__")[0] for x in keys]))  # dimensions (variables)
+
+    temp = []
+    tempq = []
+
+    for q in Qs:
+        row = {}
+        for d in Ds:
+            for k in keys:
+                if k.startswith(d) and k.endswith(q):
+                    row[d] = means[k]
+                    break
+        temp.append(row)
+        tempq.append(q)
+
+    all_keys = set(temp[0].keys())
+    i = 0
+    bads = []
+    clean = []
+    for row in temp:
+        if set(row.keys()) != all_keys:
+            bads.append(i)
+            del tempq[i]
+        else:
+            clean.append(row)
+        i = i + 1
+
+    assert len(tempq) == len(clean)
+
+    df = pd.DataFrame(columns=clean[0].keys())
+
+    for i in range(len(clean)):
+        try:
+            df.loc[questions[tempq[i]][0].split(r" - ")[1]] = clean[i]
+        except IndexError:
+            df.loc[questions[tempq[i]][0]] = clean[i]
+        except KeyError:
+            print(tempq[i] + " excluded from the analysis as it is not rated along all dimensions.")
+            continue
+
+    df.to_csv("scored_questions_for_r.csv")
 
 
 # ~~~~~ Get loadings from R script ~~~~~
 
 
-# 3.) predict actual variables in 20% using loadings from the 80 % PCA
-# 4.) record PCA predictive ability
-def test_predictiveness(directory):
-    import numpy
-
-    def l(file_path):
-        n_bytes = 2 ** 31
-        max_bytes = 2 ** 31 - 1
-        bytes_in = bytearray(0)
-        input_size = os.path.getsize(file_path)
-        with open(file_path, 'rb') as f_in:
-            for _ in range(0, input_size, max_bytes):
-                bytes_in += f_in.read(max_bytes)
-        return pickle.loads(bytes_in)
-
-    loadings = numpy.genfromtxt("loadings_from_spss.csv", delimiter=',')
-    eigenvalues = numpy.genfromtxt("eigenvalues_from_spss.csv", delimiter=",")
-    ##    components = numpy.genfromtxt("components_from_spss.csv", delimiter=',')
-    training_set, test_set = l(os.path.join(directory, "sets.pickle"))
-
-    assert len(training_set) == len(test_set)
-    # we have the same number of dimensions in the test and training set.
-
-    assert all([len(training_set[i]) > len(test_set[i]) for i in len(test_set)])
-    # the test set has fewer observations than the training set.
-
-    assert loadings.shape[0] == len(test_set)
-
-    # we have loadings for the same number of variables as we do test/training data.
-
-    def reconstruct_X(scores, loadings):
-        '''predicts original variables based on component values and loadings.
-        formulae from Abdi, H., & Williams, L. J. (2010). Principal component analysis.
-        Wiley interdisciplinary reviews: computational statistics, 2(4), 433-459.
-        '''
-        Qt = numpy.transpose(loadings)
-        return numpy.dot(scores, Qt)
-
-    def get_factors(variables, loadings):
-        '''calculates component values given variables, based on established loadings.'''
-        return numpy.dot(variables, loadings)
-
-    def squared_differences(variables, loadings):  # sum of matrix this returns == RESS
-        return numpy.sum(
-            numpy.square(numpy.subtract(variables, reconstruct_X(get_factors(variables, loadings), loadings))))
-
-    total_inertia = numpy.sum(numpy.square(training_set))
-
-    training_sq = squared_differences(training_set, loadings)
-
-    assert total_inertia - sum(eigenvalues) == math.sqrt(numpy.sum(training_sq))  # these should be identical.
-
-    testing_sq = squared_differences(training_set, loadings)
-
-    return training_sq, testing_sq
-
-    # press_testing should be approximately equal to ress_training. How do we quantify that with only two datapoints?
-    # maybe by performing a KS test or similar on the squared difference between the actual and estimated values?
-    # ask mark.
-
-    print(ks_2samp(training_sq, testing_sq))
+# # 3.) predict actual variables in 20% using loadings from the 80 % PCA
+# # 4.) record PCA predictive ability
+# def test_predictiveness(directory):
+#     import numpy
+#
+#     def l(file_path):
+#         n_bytes = 2 ** 31
+#         max_bytes = 2 ** 31 - 1
+#         bytes_in = bytearray(0)
+#         input_size = os.path.getsize(file_path)
+#         with open(file_path, 'rb') as f_in:
+#             for _ in range(0, input_size, max_bytes):
+#                 bytes_in += f_in.read(max_bytes)
+#         return pickle.loads(bytes_in)
+#
+#     loadings = numpy.genfromtxt("loadings_from_spss.csv", delimiter=',')
+#     eigenvalues = numpy.genfromtxt("eigenvalues_from_spss.csv", delimiter=",")
+#     ##    components = numpy.genfromtxt("components_from_spss.csv", delimiter=',')
+#     training_set, test_set = l(os.path.join(directory, "sets.pickle"))
+#
+#     assert len(training_set) == len(test_set)
+#     # we have the same number of dimensions in the test and training set.
+#
+#     assert all([len(training_set[i]) > len(test_set[i]) for i in len(test_set)])
+#     # the test set has fewer observations than the training set.
+#
+#     assert loadings.shape[0] == len(test_set)
+#
+#     # we have loadings for the same number of variables as we do test/training data.
+#
+#     def reconstruct_X(scores, loadings):
+#         '''predicts original variables based on component values and loadings.
+#         formulae from Abdi, H., & Williams, L. J. (2010). Principal component analysis.
+#         Wiley interdisciplinary reviews: computational statistics, 2(4), 433-459.
+#         '''
+#         Qt = numpy.transpose(loadings)
+#         return numpy.dot(scores, Qt)
+#
+#     def get_factors(variables, loadings):
+#         '''calculates component values given variables, based on established loadings.'''
+#         return numpy.dot(variables, loadings)
+#
+#     def squared_differences(variables, loadings):  # sum of matrix this returns == RESS
+#         return numpy.sum(
+#             numpy.square(numpy.subtract(variables, reconstruct_X(get_factors(variables, loadings), loadings))))
+#
+#     total_inertia = numpy.sum(numpy.square(training_set))
+#
+#     training_sq = squared_differences(training_set, loadings)
+#
+#     assert total_inertia - sum(eigenvalues) == math.sqrt(numpy.sum(training_sq))  # these should be identical.
+#
+#     testing_sq = squared_differences(training_set, loadings)
+#
+#     return training_sq, testing_sq
+#
+#     # press_testing should be approximately equal to ress_training. How do we quantify that with only two datapoints?
+#     # maybe by performing a KS test or similar on the squared difference between the actual and estimated values?
+#     # ask mark.
+#
+#     print(ks_2samp(training_sq, testing_sq))
 
 
 if __name__ == '__main__':
@@ -272,4 +297,5 @@ if __name__ == '__main__':
     if sys.argv[1] == "cleave":
         cleave(sys.argv[2])
     elif sys.argv[1] == "validate":
-        test_predictiveness(sys.argv[2])
+        print("under construction")
+        #test_predictiveness(sys.argv[2])
