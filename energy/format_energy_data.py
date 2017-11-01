@@ -1,9 +1,13 @@
 # format data for regression etc
 # goal output: csv with the following variables:
-# weather (2016 and 2017), power (2016 and 2017), municipality, month, treatment
+# if collapse_years: weather (2016 and 2017), power (2016 and 2017), municipality, month, treatment
+# else: weather,  power, municipality, month, treatment
 
 import pandas as pd
 import numpy as np
+from collections import Iterable
+
+collapse_years = False
 
 # Municipalities of interest, their waves, and their conditions
 munis = pd.read_csv("uncollapsed_PSEG_townships_conditions_with_names.csv")
@@ -11,7 +15,10 @@ munis = pd.read_csv("uncollapsed_PSEG_townships_conditions_with_names.csv")
 # Average power usage by month by municipality
 p2016 = pd.read_csv("p2016.csv")
 p2017 = pd.read_csv("p2017.csv")
-power = p2016.merge(p2017, on="Municipal City Code")
+if collapse_years == True:
+    power = p2016.merge(p2017, on="Municipal City Code")
+else:
+    power = p2016.append(p2017)
 power["MunicipalCityCode"] = power["Municipal City Code"].str.lower()
 power.to_csv("power.csv")
 
@@ -150,6 +157,19 @@ assert np.nanmin(monthlen) > 20
 
 durations['cdd'] = cdd
 durations['pseg month length'] = monthlen
+if not collapse_years:
+    vect = list(durations['avg power use'])
+    try:
+        assert all([type(vect[i]) == type(vect[i+1]) for i in range(-1, len(vect) - 2)])
+    except AssertionError:
+        print("Inconsistent typing of vector values. Types: "+str(set(type(v) for v in vect)))
+    p = []
+    for v in list(durations['avg power use']):
+        try:
+            p.append(v[~np.isnan(v)][0])
+        except IndexError:
+            p.append(v)
+    durations['avg power use'] = p
 durations.to_csv("with_weather_and_power.csv")
 
 print(durations['pseg month length'].describe())
