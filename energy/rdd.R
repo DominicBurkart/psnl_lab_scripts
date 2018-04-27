@@ -1,6 +1,7 @@
 library(sqldf)
 library(lme4)
 library(rdrobust)
+library(MuMIn)
 
 df = read.csv("/Users/dominicburkart/Documents/princeton/energy project/energy_analysis/summer_data.csv")
 
@@ -330,9 +331,37 @@ treatment = nov22data$Treated
 month = nov22data$month
 psegmonth = nov22data$psegMonth
 year = as.factor(nov22data$year)
+wave = as.factor(nov22data$Start) #Levels: 07/20/17 (wave 1) and 08/01/17 (wave 2)
+
+# reassert matchedness on DV
+months = unique(nov22data$psegMonth)
+for (m in months){
+  library(Hmisc)
+  conditions = unique(nov22data$Condition)
+  dfs = list()
+  i = 1
+  for (con in conditions){
+    munis = unique(nov22data[nov22data$Condition == con,]$MunicipalCityCode)
+    dfs[[i]] = subset(nov22data, MunicipalCityCode %in% munis & (psegMonth == m))
+    dfs[[i]]$condition = con
+    i = i + 1
+  }
+  
+  for_anova = rbind(dfs[[2]], dfs[[3]], dfs[[4]], dfs[[5]], dfs[[6]])
+  for_anova$per_cap = impute(for_anova$kwh / for_anova$customers, 0)
+  for_anova = for_anova[, c("kwh", "per_cap", "condition", "year")]
+  colnames(for_anova) = c("kwh", "kwh_per_capita", "condition", "year")
+  
+  a = aov(kwh ~ condition, data=for_anova)
+  summary(a)
+  plot(a)
+  a = aov(kwh_per_capita ~ condition, data=for_anova)
+  summary(a)
+  plot(a)
+}
 
 # All periods outside of the months are labeled control
-x = nov22data$Condition[1] #Nan
+x = nov22data$Condition[1] #known Nan
 c = nov22data$Condition
 condition = replace(c, c==x, "Co")
 
@@ -346,7 +375,173 @@ library(plotly)
 plot_ly(
   x = c("Social Proof", "Temporal", "Prospection", "Trust"),
   y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
-  error_y = ~list(value = c(1.114e-02, 1.096e-02, 1.018e-02, 1.152e-02), color = '#000000'),
+  error_y = list( array = c(1.114e-02, 1.096e-02, 1.018e-02, 1.152e-02), color = '#000000'),
+  name = "Treatment Effects",
+  type = "bar")
+
+wave1 = nov22data[nov22data$Start == "07/20/17",]
+customers = scale(wave1$customers)
+route = as.factor(wave1$route)
+kwh = scale(wave1$kwh)
+thi = scale(wave1$thi)
+condition = wave1$Condition
+city = wave1$MunicipalCityCode
+treatment = wave1$Treated
+month = wave1$month
+psegmonth = wave1$psegMonth
+year = as.factor(wave1$year)
+wave = as.factor(wave1$Start) #all wave 1
+
+# All periods outside of the months are labeled control
+x = nov22data[nov22data$Start == "07/20/17",]$Condition[1] #Nan
+c = nov22data[nov22data$Start == "07/20/17",]$Condition
+condition = replace(c, c==x, "Co")
+
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | route ) + ( 1 | city) + (1 | month))
+summary(r)
+plot(r)
+anova(r)
+c = coef(r)
+library(plotly)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  name = "Treatment Effects",
+  type = "bar")
+
+
+wave2 = nov22data[nov22data$Start == "08/01/17",]
+customers = scale(wave2$customers)
+route = as.factor(wave2$route)
+kwh = scale(wave2$kwh)
+thi = scale(wave2$thi)
+condition = wave2$Condition
+city = wave2$MunicipalCityCode
+treatment = wave2$Treated
+month = wave2$month
+psegmonth = wave2$psegMonth
+year = as.factor(wave2$year)
+wave = as.factor(wave2$Start) #all wave 2
+
+# All periods outside of the months are labeled control
+x = nov22data[nov22data$Start == "08/01/17",]$Condition[1] #Nan
+c = nov22data[nov22data$Start == "08/01/17",]$Condition
+condition = replace(c, c==x, "Co")
+
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | route ) + ( 1 | city) + (1 | month))
+summary(r)
+plot(r)
+#anova(r)
+c = coef(r)
+library(plotly)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  name = "Treatment Effects",
+  type = "bar")
+
+
+#reset to waves 1 + 2 
+customers = scale(nov22data$customers)
+route = as.factor(nov22data$route)
+kwh = scale(nov22data$kwh)
+thi = scale(nov22data$thi)
+condition = nov22data$Condition
+city = nov22data$MunicipalCityCode
+treatment = nov22data$Treated
+month = nov22data$month
+psegmonth = nov22data$psegMonth
+year = as.factor(nov22data$year)
+wave = as.factor(nov22data$Start) #Levels: 07/20/17 (wave 1) and 08/01/17 (wave 2)
+
+#randomized condition (should yield insignificant results)
+x = nov22data$Condition[1] #Nan
+c = nov22data$Condition
+condition = replace(c, c==x, "Co")
+set.seed(50)
+condition = sample(condition)
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | route ) + ( 1 | city) + (1 | month))
+summary(r)
+plot(r)
+#anova(r)
+c = coef(r)
+library(plotly)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  name = "Treatment Effects",
+  type = "bar")
+
+set.seed(5)
+condition = sample(condition)
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | route ) + ( 1 | city) + (1 | month))
+summary(r)
+plot(r)
+#anova(r)
+c = coef(r)
+library(plotly)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  name = "Treatment Effects",
+  type = "bar")
+
+set.seed(1)
+condition = sample(condition)
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | route ) + ( 1 | city) + (1 | month))
+summary(r)
+plot(r)
+#anova(r)
+c = coef(r)
+library(plotly)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  name = "Treatment Effects",
+  type = "bar")
+
+set.seed(7)
+condition = sample(condition)
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | route ) + ( 1 | city) + (1 | month))
+summary(r)
+plot(r)
+#anova(r)
+c = coef(r)
+library(plotly)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  name = "Treatment Effects",
+  type = "bar")
+
+set.seed(3)
+condition = sample(condition)
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | route ) + ( 1 | city) + (1 | month))
+summary(r)
+plot(r)
+#anova(r)
+c = coef(r)
+library(plotly)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  name = "Treatment Effects",
+  type = "bar")
+
+# reset condition
+condition = nov22data$Condition
+x = nov22data$Condition[1] #Nan
+c = nov22data$Condition
+condition = replace(c, c==x, "Co")
+
+r = lmer(kwh ~ condition + (1 | wave ) + ( 1 | customers) + ( 1 | thi) + ( 1 | route ) + ( 1 | city) + (1 | month))
+summary(r)
+plot(r)
+c = coef(r)
+library(plotly)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
   name = "Treatment Effects",
   type = "bar")
 
@@ -361,7 +556,7 @@ c = coef(r)
 plot_ly(
   x = c("Social Proof", "Temporal", "Prospection", "Trust", "Social:Customers", "Temporal:Customers", "Prospection:Customers","Trust:Customers"),
   y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1], c$city$`conditionSo:customers`[1], c$city$`conditionTe:customers`[1], c$city$`conditionPr:customers`[1], c$city$`conditionTr:customers`[1]),
-  #error_y = ~list(value = c(), color = '#000000'),
+  #error_y = list( array = c(), color = '#000000'),
   name = "Treatment Effects",
   type = "bar")
 
@@ -597,6 +792,270 @@ c = coef(r)
 plot_ly(
   x = c("Social Proof", "Temporal", "Prospection", "Trust"),
   y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
-  error_y = ~list(value = c(1.114e-02, 1.096e-02, 1.018e-02, 1.152e-02), color = '#000000'),
+  name = "Treatment Effects",
+  type = "bar")
+
+# disclude potential outliers -------------------------------------------------------
+rm(list=ls())
+nov22data = read.csv("/Users/dominicburkart/Documents/princeton/energy project/energy_analysis/nov22data_naive_months.csv")
+customers = scale(nov22data$customers)
+route = as.factor(nov22data$route)
+kwh = scale(nov22data$kwh)
+thi = scale(nov22data$thi)
+condition = nov22data$Condition
+city = nov22data$MunicipalCityCode
+treatment = nov22data$Treated
+month = nov22data$month
+psegmonth = nov22data$psegMonth
+year = as.factor(nov22data$year)
+wave = as.factor(nov22data$Start) #Levels: 07/20/17 (wave 1) and 08/01/17 (wave 2)
+
+#impute NaNs with "Control" condition
+condition = nov22data$Condition
+x = nov22data$Condition[1] #Nan
+c = nov22data$Condition
+condition = replace(c, c==x, "Co")
+
+
+# model at the municipality level -----------------------------------------
+
+rm(list=ls())
+library(sqldf)
+library(lmerTest)
+library(plotly)
+library(MuMIn)
+nov22data = read.csv("/Users/dominicburkart/Documents/princeton/energy project/energy_analysis/nov22data_naive_months.csv")
+
+# All periods outside of the months are labeled control
+x = nov22data$Condition[1] #known Nan
+c = nov22data$Condition
+condition_imputed = replace(c, c==x, "Co")
+df = data.frame(nov22data,condition_imputed)
+df$Treated = replace(df$Treated, df$Treated==unique(df$Treated)[3], "No")
+
+conts = c("customers", "kwh", "thi")
+cats = c("Treated", "condition_imputed", "Condition", "year", "month", "MunicipalCityCode", "psegMonth", "Start")
+
+sql_cmd = paste("select ", paste(cats, collapse = ", "), ", avg(", paste(conts, collapse = "), avg("), "), sum(", paste(conts, collapse="), sum("), ") from df group by MunicipalCityCode, psegMonth")
+munidf = sqldf(sql_cmd)
+
+#cool! but we want to have the average THI for each muni/month combo weighted by the number of customers read.
+for_weighted = c("thi") #from df
+weight_by_route = c("customers")
+munidf$weighted_thi = NA
+for (m in unique(df$psegMonth)){
+  for (t in unique(df$MunicipalCityCode)){
+    tdf = df[df$psegMonth == m & df$MunicipalCityCode == t, c(for_weighted, weight_by_route)]
+    for (wc in for_weighted) { #next line is only designed to change THI (only relevant var at analysis time)
+      munidf[munidf$psegMonth == m & munidf$MunicipalCityCode == t,]$weighted_thi  = sum(tdf[,wc] * tdf[,weight_by_route] / sum(tdf[,weight_by_route]))
+    }
+  }
+}
+
+kwh = scale(munidf$`sum(kwh)`) #effect is smaller but significant with logged data
+thi = scale(munidf$weighted_thi)
+customers = scale(munidf$`sum( customers)`)
+
+treated = munidf$Treated
+condition = munidf$condition_imputed
+month = munidf$month
+city = munidf$MunicipalCityCode
+
+#significant results at municipal level
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | city) + (1 | month))
+summary(r)
+plot(r)
+c = coef(r)
+r_month = r
+
+r.squaredGLMM(r) # 0.00492265 0.99101013 
+
+kwh = scale(log(munidf$`sum(kwh)`))
+thi = scale(munidf$weighted_thi)
+customers = scale(munidf$`sum( customers)`)
+
+treated = munidf$Treated
+condition = munidf$condition_imputed
+month = munidf$month
+city = munidf$MunicipalCityCode
+
+plotmeans(kwh  ~ condition, xlab="Condition",
+          ylab="KWH", main="Group Means with 95% CI", connect = F)
+
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  error_y = list( array = c(0.03802, 0.03858, 0.03766, 0.03662), color = '#000000'),
+  name = "Treatment Effects",
+  type = "bar")
+
+#still detects customers 
+r = lmer(kwh ~ condition + customers + ( 1 | thi) + ( 1 | city) + (1 | munidf$psegMonth))
+summary(r)
+
+r = lmer(kwh ~ treated + (1 | customers) + ( 1 | thi) + ( 1 | city) + (1 | munidf$psegMonth))
+summary(r)
+
+wave1 = munidf[munidf$Start == "07/20/17",]
+
+kwh1 = scale(wave1$`sum(kwh)`)
+thi1 = scale(wave1$weighted_thi)
+customers1 = scale(wave1$`sum( customers)`)
+
+treated1 = wave1$Treated
+condition1 = wave1$condition_imputed
+month1 = wave1$month
+city1 = wave1$MunicipalCityCode
+
+r = lmer(kwh1 ~ condition1 + ( 1 | customers1) + ( 1 | thi1) + ( 1 | city1) + (1 | month1))
+summary(r)
+plot(r)
+c = coef(r)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city1$condition1So[1],coef(r)$city1$condition1Te[1], coef(r)$city1$condition1Pr[1], coef(r)$city1$condition1Tr[1]),
+  error_y = list( array = c(0.05454, 0.05603, 0.05562, 0.05304), color = '#000000'),
+  name = "Treatment Effects",
+  type = "bar")
+
+wave2 = munidf[munidf$Start == "08/01/17",]
+
+kwh2 = scale(wave2$`sum(kwh)`)
+thi2 = scale(wave2$weighted_thi)
+customers2 = scale(wave2$`sum( customers)`)
+
+treated2 = wave2$Treated
+condition2 = wave2$condition_imputed
+month2 = wave2$month
+city2 = wave2$MunicipalCityCode
+
+r = lmer(kwh2 ~ condition2 + ( 1 | customers2) + ( 1 | thi2) + ( 1 | city2) + (1 | month2))
+summary(r)
+plot(r)
+c = coef(r)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city2$condition2So[1],coef(r)$city2$condition2Te[1], coef(r)$city2$condition2Pr[1], coef(r)$city2$condition2Tr[1]),
+  error_y = list( array = c(0.05737, 0.05741, 0.05457, 0.05738), color = '#000000'),
+  name = "Treatment Effects",
+  type = "bar")
+
+#insig when IV randomized
+set.seed(50)
+condition = sample(condition)
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | city) + (1 | month))
+summary(r)
+c = coef(r)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  name = "Treatment Effects",
+  type = "bar")
+
+#insig when IV randomized
+set.seed(5)
+condition = sample(condition)
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | city) + (1 | month))
+summary(r)
+c = coef(r)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  name = "Treatment Effects",
+  type = "bar")
+
+#insig when IV randomized
+set.seed(1)
+condition = sample(condition)
+r = lmer(kwh ~ condition + ( 1 | customers) + ( 1 | thi) + ( 1 | city) + (1 | month))
+summary(r)
+c = coef(r)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  name = "Treatment Effects",
+  type = "bar")
+
+#reset condition
+condition = munidf$condition_imputed
+
+# reassert matchedness on DV
+months = unique(munidf$psegMonth)
+to_join = list()
+for (m in months){
+  library(Hmisc)
+  conditions = unique(munidf$Condition)
+  dfs = list()
+  i = 1
+  for (con in conditions){
+    munis = unique(munidf[munidf$Condition == con,]$MunicipalCityCode)
+    dfs[[i]] = subset(munidf, MunicipalCityCode %in% munis & (psegMonth == m))
+    dfs[[i]]$condition_for_matchedness = con
+    i = i + 1
+  }
+  to_join[[m]] = rbind(dfs[[2]], dfs[[3]], dfs[[4]], dfs[[5]], dfs[[6]])
+}
+joined_df = do.call(rbind, to_join)
+joined_df = joined_df[! joined_df$psegMonth %in% c("Jul2017","Aug2017","Sep2017","Oct2017"),]
+a = aov(`sum(kwh)` ~ condition_for_matchedness, data=joined_df)
+summary(a)
+
+summary(lm(`sum(kwh)` ~ condition_for_matchedness, data=joined_df))
+anova(lm(`sum(kwh)` ~ condition_for_matchedness, data=joined_df))
+
+library(gplots)
+attach(mtcars)
+plotmeans(`sum(kwh)` ~ condition_for_matchedness, xlab="Condition",
+          ylab="KWH", main="Group Means with 95% CI", data = joined_df, connect = F)
+
+kwh = scale(joined_df$`sum(kwh)`)
+thi = scale(joined_df$weighted_thi)
+customers = scale(joined_df$`sum( customers)`)
+condition = joined_df$condition_for_matchedness
+city = joined_df$MunicipalCityCode
+month = joined_df$month
+
+r = lmer(kwh ~ condition + (1 | thi) + ( 1 | customers) + ( 1 | month ) + (1 | city))
+summary(r)
+
+c = coef(r)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  error_y = list(array = c(0.22596, 0.22755, 0.22921, 0.22921), color = '#000000'),
+  name = "Treatment Effects",
+  type = "bar")
+
+wave1 = joined_df[joined_df$Start == "07/20/17",]
+kwh = scale(wave1$`sum(kwh)`)
+thi = scale(wave1$weighted_thi)
+customers = scale(wave1$`sum( customers)`)
+condition = wave1$condition_for_matchedness
+city = wave1$MunicipalCityCode
+month = wave1$month
+
+r = lmer(kwh ~ condition + (1 | thi) + ( 1 | customers) + ( 1 | month ) + (1 | city))
+summary(r)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  error_y = list(array = c(0.30095, 0.30508, 0.30509, 0.30506), color = '#000000'),
+  name = "Treatment Effects",
+  type = "bar")
+
+wave2 = joined_df[joined_df$Start == "08/01/17",]
+kwh = scale(wave2$`sum(kwh)`)
+thi = scale(wave2$weighted_thi)
+customers = scale(wave2$`sum( customers)`)
+condition = wave2$condition_for_matchedness
+city = wave2$MunicipalCityCode
+month = wave2$month
+
+r = lmer(kwh ~ condition + (1 | thi) + ( 1 | customers) + ( 1 | month ) + (1 | city))
+summary(r)
+plot_ly(
+  x = c("Social Proof", "Temporal", "Prospection", "Trust"),
+  y = c(coef(r)$city$conditionSo[1],coef(r)$city$conditionTe[1], coef(r)$city$conditionPr[1], coef(r)$city$conditionTr[1]),
+  error_y = list(array = c(0.345669, 0.345660, 0.335925, 0.345671), color = '#000000'),
   name = "Treatment Effects",
   type = "bar")
